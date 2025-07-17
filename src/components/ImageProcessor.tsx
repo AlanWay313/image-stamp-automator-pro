@@ -1,11 +1,12 @@
 
 import React, { useState } from 'react';
-import { Play, Download, Settings, Eye, AlertCircle } from 'lucide-react';
+import { Play, Download, Settings, Eye, AlertCircle, Edit3 } from 'lucide-react';
 import { UploadedImage, Logo } from '@/pages/Index';
 import { WatermarkPosition } from '@/types/watermark';
 import { PositionSelector } from '@/components/PositionSelector';
 import { PreviewPanel } from '@/components/PreviewPanel';
 import { DownloadManager } from '@/components/DownloadManager';
+import { VisualEditor } from '@/components/VisualEditor';
 import { processImageWithWatermark } from '@/utils/imageProcessor';
 
 interface ImageProcessorProps {
@@ -28,6 +29,9 @@ export const ImageProcessor: React.FC<ImageProcessorProps> = ({
   const [processing, setProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState(0);
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
+  const [editingImageId, setEditingImageId] = useState<string | null>(null);
+
+  const editingImage = editingImageId ? images.find(img => img.id === editingImageId) : null;
 
   const processAllImages = async () => {
     if (!selectedLogo || images.length === 0) return;
@@ -53,6 +57,13 @@ export const ImageProcessor: React.FC<ImageProcessorProps> = ({
     setProcessing(false);
   };
 
+  const handleVisualEditorSave = (processedUrl: string) => {
+    if (editingImageId) {
+      onImageProcessed(editingImageId, processedUrl);
+      setEditingImageId(null);
+    }
+  };
+
   const processedImages = images.filter(img => img.processed);
   const canProcess = selectedLogo && images.length > 0 && !processing;
 
@@ -68,6 +79,32 @@ export const ImageProcessor: React.FC<ImageProcessorProps> = ({
             Faça upload de imagens para começar o processamento
           </p>
         </div>
+      </div>
+    );
+  }
+
+  // Visual Editor Mode
+  if (editingImageId && editingImage && selectedLogo) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900">Editor Visual</h2>
+            <p className="text-gray-600">Edite a posição e tamanho da logo manualmente</p>
+          </div>
+          <button
+            onClick={() => setEditingImageId(null)}
+            className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium"
+          >
+            ← Voltar
+          </button>
+        </div>
+        
+        <VisualEditor
+          image={editingImage}
+          logo={selectedLogo}
+          onSave={handleVisualEditorSave}
+        />
       </div>
     );
   }
@@ -141,20 +178,22 @@ export const ImageProcessor: React.FC<ImageProcessorProps> = ({
             )}
           </div>
           
-          <button
-            onClick={processAllImages}
-            disabled={!canProcess}
-            className={`px-6 py-3 rounded-lg font-medium flex items-center space-x-2 transition-all ${
-              canProcess
-                ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md hover:shadow-lg'
-                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-            }`}
-          >
-            <Play className="h-4 w-4" />
-            <span>
-              {processing ? 'Processando...' : 'Processar Todas'}
-            </span>
-          </button>
+          <div className="flex space-x-3">
+            <button
+              onClick={processAllImages}
+              disabled={!canProcess}
+              className={`px-6 py-3 rounded-lg font-medium flex items-center space-x-2 transition-all ${
+                canProcess
+                  ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md hover:shadow-lg'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              }`}
+            >
+              <Play className="h-4 w-4" />
+              <span>
+                {processing ? 'Processando...' : 'Processar Todas'}
+              </span>
+            </button>
+          </div>
         </div>
 
         {/* Progress Bar */}
@@ -175,6 +214,50 @@ export const ImageProcessor: React.FC<ImageProcessorProps> = ({
           </div>
         )}
       </div>
+
+      {/* Image Grid with Edit Options */}
+      {selectedLogo && (
+        <div className="bg-white rounded-xl p-6 shadow-md border">
+          <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center space-x-2">
+            <Eye className="h-5 w-5" />
+            <span>Imagens para Processar</span>
+          </h3>
+          
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {images.map((image) => (
+              <div key={image.id} className="relative group">
+                <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden border">
+                  <img
+                    src={image.preview}
+                    alt={image.file.name}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                
+                <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all rounded-lg flex items-center justify-center">
+                  <button
+                    onClick={() => setEditingImageId(image.id)}
+                    className="opacity-0 group-hover:opacity-100 bg-white text-gray-900 px-3 py-2 rounded-lg text-sm font-medium flex items-center space-x-2 transition-all hover:bg-gray-100"
+                  >
+                    <Edit3 className="h-4 w-4" />
+                    <span>Editar</span>
+                  </button>
+                </div>
+                
+                <p className="mt-2 text-xs text-gray-600 truncate">
+                  {image.file.name}
+                </p>
+                
+                {image.processed && (
+                  <div className="absolute top-2 right-2 bg-green-500 text-white text-xs px-2 py-1 rounded">
+                    ✓
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Preview Panel */}
       {selectedLogo && (

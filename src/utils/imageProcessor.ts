@@ -1,10 +1,11 @@
 
-import { WatermarkPosition } from '@/types/watermark';
+import { WatermarkPosition, WatermarkOptions } from '@/types/watermark';
 
 export const processImageWithWatermark = async (
   imageFile: File,
   logoFile: File,
-  position: WatermarkPosition
+  position: WatermarkPosition,
+  options?: Partial<WatermarkOptions>
 ): Promise<string> => {
   return new Promise((resolve, reject) => {
     const canvas = document.createElement('canvas');
@@ -31,40 +32,52 @@ export const processImageWithWatermark = async (
       // Draw the original image
       ctx.drawImage(image, 0, 0);
       
-      // Calculate logo size (10% of image width, maintaining aspect ratio)
-      const logoMaxWidth = canvas.width * 0.1;
+      // Calculate logo size
+      const logoScale = options?.scale || 0.1;
+      const logoMaxWidth = canvas.width * logoScale;
       const logoAspectRatio = logo.naturalWidth / logo.naturalHeight;
-      const logoWidth = Math.min(logoMaxWidth, logo.naturalWidth);
+      const logoWidth = Math.min(logoMaxWidth, logo.naturalWidth * logoScale);
       const logoHeight = logoWidth / logoAspectRatio;
       
-      // Calculate logo position with margin
-      const margin = Math.min(canvas.width, canvas.height) * 0.02;
+      // Calculate logo position
+      const margin = Math.min(canvas.width, canvas.height) * (options?.margin || 0.02);
       let x, y;
       
-      switch (position) {
-        case 'top-left':
-          x = margin;
-          y = margin;
-          break;
-        case 'top-right':
-          x = canvas.width - logoWidth - margin;
-          y = margin;
-          break;
-        case 'bottom-left':
-          x = margin;
-          y = canvas.height - logoHeight - margin;
-          break;
-        case 'bottom-right':
-          x = canvas.width - logoWidth - margin;
-          y = canvas.height - logoHeight - margin;
-          break;
-        default:
-          x = canvas.width - logoWidth - margin;
-          y = canvas.height - logoHeight - margin;
+      if (position === 'custom' && options?.customPosition) {
+        // Custom positioning (percentage based)
+        x = (options.customPosition.x / 100) * canvas.width - logoWidth / 2;
+        y = (options.customPosition.y / 100) * canvas.height - logoHeight / 2;
+      } else {
+        // Predefined positions
+        switch (position) {
+          case 'top-left':
+            x = margin;
+            y = margin;
+            break;
+          case 'top-right':
+            x = canvas.width - logoWidth - margin;
+            y = margin;
+            break;
+          case 'bottom-left':
+            x = margin;
+            y = canvas.height - logoHeight - margin;
+            break;
+          case 'bottom-right':
+            x = canvas.width - logoWidth - margin;
+            y = canvas.height - logoHeight - margin;
+            break;
+          default:
+            x = canvas.width - logoWidth - margin;
+            y = canvas.height - logoHeight - margin;
+        }
       }
       
+      // Ensure logo stays within bounds
+      x = Math.max(0, Math.min(x, canvas.width - logoWidth));
+      y = Math.max(0, Math.min(y, canvas.height - logoHeight));
+      
       // Set logo opacity
-      ctx.globalAlpha = 0.8;
+      ctx.globalAlpha = options?.opacity || 0.8;
       
       // Draw the logo
       ctx.drawImage(logo, x, y, logoWidth, logoHeight);
@@ -80,7 +93,7 @@ export const processImageWithWatermark = async (
         } else {
           reject(new Error('Could not create blob'));
         }
-      }, 'image/png', 0.9);
+      }, 'image/png', 0.95);
     };
     
     image.onload = () => {
@@ -99,5 +112,20 @@ export const processImageWithWatermark = async (
     // Load the images
     image.src = URL.createObjectURL(imageFile);
     logo.src = URL.createObjectURL(logoFile);
+  });
+};
+
+export const processImageWithCustomWatermark = async (
+  imageFile: File,
+  logoFile: File,
+  logoPosition: { x: number; y: number },
+  logoScale: number,
+  logoOpacity: number
+): Promise<string> => {
+  return processImageWithWatermark(imageFile, logoFile, 'custom', {
+    customPosition: logoPosition,
+    scale: logoScale,
+    opacity: logoOpacity,
+    position: 'custom'
   });
 };
