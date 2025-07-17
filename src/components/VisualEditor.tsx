@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Canvas as FabricCanvas, Image as FabricImage, StaticCanvas } from 'fabric';
 import { UploadedImage, Logo } from '@/pages/Index';
@@ -194,42 +193,20 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
   const saveImage = () => {
     if (!fabricCanvasRef.current) return;
 
-    // Create a new static canvas for export
-    const exportCanvas = new StaticCanvas(null, {
-      width: fabricCanvasRef.current.width,
-      height: fabricCanvasRef.current.height
+    // Export as high quality image directly from the main canvas
+    const dataURL = fabricCanvasRef.current.toDataURL({
+      format: 'png',
+      quality: 1,
+      multiplier: 1
     });
-
-    // Clone all objects to export canvas
-    const objects = fabricCanvasRef.current.getObjects();
-    const clonedObjects: any[] = [];
     
-    Promise.all(objects.map(obj => 
-      new Promise((resolve) => {
-        obj.clone((cloned: any) => {
-          clonedObjects.push(cloned);
-          resolve(cloned);
-        });
-      })
-    )).then(() => {
-      clonedObjects.forEach(obj => exportCanvas.add(obj));
-      exportCanvas.renderAll();
-      
-      // Export as high quality image
-      const dataURL = exportCanvas.toDataURL({
-        format: 'png',
-        quality: 1,
-        multiplier: 1
+    // Convert to blob and save
+    fetch(dataURL)
+      .then(res => res.blob())
+      .then(blob => {
+        const url = URL.createObjectURL(blob);
+        onSave(url);
       });
-      
-      // Convert to blob and save
-      fetch(dataURL)
-        .then(res => res.blob())
-        .then(blob => {
-          const url = URL.createObjectURL(blob);
-          onSave(url);
-        });
-    });
   };
 
   return (
