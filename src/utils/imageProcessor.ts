@@ -25,28 +25,27 @@ export const processImageWithWatermark = async (
     const processImages = () => {
       if (!imageLoaded || !logoLoaded) return;
       
-      // Set canvas size to match the original image
+      // Set canvas size to match the original image exactly - NO BORDERS
       canvas.width = image.naturalWidth;
       canvas.height = image.naturalHeight;
       
-      // Draw the original image
-      ctx.drawImage(image, 0, 0);
+      // Clear canvas and draw the original image
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
       
       // Calculate logo size
-      const logoScale = options?.scale || 0.1;
-      const logoMaxWidth = canvas.width * logoScale;
-      const logoAspectRatio = logo.naturalWidth / logo.naturalHeight;
-      const logoWidth = Math.min(logoMaxWidth, logo.naturalWidth * logoScale);
-      const logoHeight = logoWidth / logoAspectRatio;
+      const logoScale = options?.scale || 0.15;
+      const logoWidth = Math.min(canvas.width * logoScale, logo.naturalWidth);
+      const logoHeight = (logoWidth / logo.naturalWidth) * logo.naturalHeight;
       
       // Calculate logo position
-      const margin = Math.min(canvas.width, canvas.height) * (options?.margin || 0.02);
+      const margin = Math.min(canvas.width, canvas.height) * 0.02;
       let x, y;
       
       if (position === 'custom' && options?.customPosition) {
-        // Custom positioning (percentage based)
-        x = (options.customPosition.x / 100) * canvas.width - logoWidth / 2;
-        y = (options.customPosition.y / 100) * canvas.height - logoHeight / 2;
+        // Use exact pixel coordinates for custom positioning
+        x = options.customPosition.x;
+        y = options.customPosition.y;
       } else {
         // Predefined positions
         switch (position) {
@@ -72,20 +71,16 @@ export const processImageWithWatermark = async (
         }
       }
       
-      // Ensure logo stays within bounds
+      // Ensure logo stays within canvas bounds
       x = Math.max(0, Math.min(x, canvas.width - logoWidth));
       y = Math.max(0, Math.min(y, canvas.height - logoHeight));
       
-      // Set logo opacity
-      ctx.globalAlpha = options?.opacity || 0.8;
-      
-      // Draw the logo
+      // Apply logo opacity and draw
+      ctx.globalAlpha = options?.opacity || 0.9;
       ctx.drawImage(logo, x, y, logoWidth, logoHeight);
-      
-      // Reset opacity
       ctx.globalAlpha = 1.0;
       
-      // Convert to blob and create URL
+      // Convert to blob with high quality
       canvas.toBlob((blob) => {
         if (blob) {
           const url = URL.createObjectURL(blob);
@@ -93,7 +88,7 @@ export const processImageWithWatermark = async (
         } else {
           reject(new Error('Could not create blob'));
         }
-      }, 'image/png', 0.95);
+      }, 'image/png', 1.0);
     };
     
     image.onload = () => {
@@ -109,12 +104,13 @@ export const processImageWithWatermark = async (
     image.onerror = () => reject(new Error('Failed to load image'));
     logo.onerror = () => reject(new Error('Failed to load logo'));
     
-    // Load the images
+    // Load images
     image.src = URL.createObjectURL(imageFile);
     logo.src = URL.createObjectURL(logoFile);
   });
 };
 
+// Updated function for custom positioning with exact coordinates
 export const processImageWithCustomWatermark = async (
   imageFile: File,
   logoFile: File,
@@ -125,7 +121,6 @@ export const processImageWithCustomWatermark = async (
   return processImageWithWatermark(imageFile, logoFile, 'custom', {
     customPosition: logoPosition,
     scale: logoScale,
-    opacity: logoOpacity,
-    position: 'custom'
+    opacity: logoOpacity
   });
 };

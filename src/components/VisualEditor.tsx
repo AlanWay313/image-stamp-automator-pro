@@ -1,19 +1,15 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Canvas as FabricCanvas, Image as FabricImage, StaticCanvas } from 'fabric';
 import { UploadedImage, Logo } from '@/pages/Index';
+import { Button } from "@/components/ui/button";
 import { Slider } from '@/components/ui/slider';
-import { Button } from '@/components/ui/button';
-import { Download, RotateCcw, Move, Palette, Settings2 } from 'lucide-react';
+import { Download, RotateCcw, Move, Palette, Settings2, X, Trash2 } from 'lucide-react';
 
 interface VisualEditorProps {
   image: UploadedImage;
   logo: Logo;
   onSave: (processedImage: string) => void;
-}
-
-interface DragState {
-  isDragging: boolean;
-  dragOffset: { x: number; y: number };
 }
 
 export const VisualEditor: React.FC<VisualEditorProps> = ({
@@ -22,152 +18,218 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
   onSave
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const displayCanvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const fabricCanvasRef = useRef<FabricCanvas | null>(null);
+  const backgroundImageRef = useRef<FabricImage | null>(null);
+  const logoImageRef = useRef<FabricImage | null>(null);
   
-  const [logoPosition, setLogoPosition] = useState({ x: 80, y: 80 });
   const [logoScale, setLogoScale] = useState(0.15);
   const [logoOpacity, setLogoOpacity] = useState(0.9);
-  const [dragState, setDragState] = useState<DragState>({ isDragging: false, dragOffset: { x: 0, y: 0 } });
-  
-  const [imageElement, setImageElement] = useState<HTMLImageElement | null>(null);
-  const [logoElement, setLogoElement] = useState<HTMLImageElement | null>(null);
-  const [displayScale, setDisplayScale] = useState(1);
+  const [canvasReady, setCanvasReady] = useState(false);
+  const [logoPosition, setLogoPosition] = useState({ x: 0, y: 0 });
+  const [hasLogo, setHasLogo] = useState(false);
 
+  // Initialize Fabric.js canvas
   useEffect(() => {
-    const img = new Image();
-    img.onload = () => setImageElement(img);
-    img.src = image.preview;
-
-    const logoImg = new Image();
-    logoImg.onload = () => setLogoElement(logoImg);
-    logoImg.src = logo.preview;
-  }, [image.preview, logo.preview]);
-
-  const drawCanvas = useCallback((canvas: HTMLCanvasElement, scale: number = 1) => {
-    if (!imageElement || !logoElement) return;
-    
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // Set canvas size
-    if (scale === 1) {
-      // Original size for final export
-      canvas.width = imageElement.naturalWidth;
-      canvas.height = imageElement.naturalHeight;
-    } else {
-      // Scaled size for display
-      canvas.width = imageElement.naturalWidth * scale;
-      canvas.height = imageElement.naturalHeight * scale;
-    }
-    
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Draw background image
-    ctx.drawImage(imageElement, 0, 0, canvas.width, canvas.height);
-    
-    // Calculate logo dimensions
-    const logoWidth = logoElement.naturalWidth * logoScale * scale;
-    const logoHeight = logoElement.naturalHeight * logoScale * scale;
-    
-    // Calculate logo position
-    const logoX = (logoPosition.x / 100) * canvas.width - logoWidth / 2;
-    const logoY = (logoPosition.y / 100) * canvas.height - logoHeight / 2;
-    
-    // Draw logo with opacity
-    ctx.save();
-    ctx.globalAlpha = logoOpacity;
-    ctx.drawImage(logoElement, logoX, logoY, logoWidth, logoHeight);
-    ctx.restore();
-  }, [imageElement, logoElement, logoPosition, logoScale, logoOpacity]);
-
-  const updateDisplayCanvas = useCallback(() => {
-    if (!displayCanvasRef.current || !containerRef.current || !imageElement) return;
-    
-    const container = containerRef.current;
-    const maxWidth = container.clientWidth - 40;
-    const maxHeight = 600;
-    
-    const scale = Math.min(
-      maxWidth / imageElement.naturalWidth,
-      maxHeight / imageElement.naturalHeight,
-      1
-    );
-    
-    setDisplayScale(scale);
-    drawCanvas(displayCanvasRef.current, scale);
-  }, [drawCanvas, imageElement]);
-
-  const updateOriginalCanvas = useCallback(() => {
     if (!canvasRef.current) return;
-    drawCanvas(canvasRef.current, 1);
-  }, [drawCanvas]);
 
-  useEffect(() => {
-    updateDisplayCanvas();
-    updateOriginalCanvas();
-  }, [updateDisplayCanvas, updateOriginalCanvas]);
+    const canvas = new FabricCanvas(canvasRef.current, {
+      backgroundColor: 'transparent',
+      preserveObjectStacking: true,
+      selection: true,
+      uniformScaling: true,
+      centeredScaling: true,
+    });
 
-  useEffect(() => {
-    const handleResize = () => updateDisplayCanvas();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [updateDisplayCanvas]);
+    fabricCanvasRef.current = canvas;
 
-  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = displayCanvasRef.current;
-    if (!canvas) return;
-    
-    const rect = canvas.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
-    
-    setDragState({
-      isDragging: true,
-      dragOffset: {
-        x: x - logoPosition.x,
-        y: y - logoPosition.y
+    // Load background image
+    FabricImage.fromURL(image.preview, {
+      crossOrigin: 'anonymous'
+    }).then((backgroundImg) => {
+      if (!fabricCanvasRef.current) return;
+      
+      // Set canvas size to match image exactly
+      const canvasWidth = backgroundImg.width || 800;
+      const canvasHeight = backgroundImg.height || 600;
+      
+      canvas.setDimensions({
+        width: canvasWidth,
+        height: canvasHeight
+      });
+
+      // Scale background image to fit canvas exactly
+      backgroundImg.scaleToWidth(canvasWidth);
+      backgroundImg.scaleToHeight(canvasHeight);
+      backgroundImg.set({
+        left: 0,
+        top: 0,
+        selectable: false,
+        evented: false,
+        hoverCursor: 'default',
+        moveCursor: 'default'
+      });
+
+      canvas.add(backgroundImg);
+      backgroundImageRef.current = backgroundImg;
+      
+      // Add logo after background is loaded
+      addLogoToCanvas();
+      setCanvasReady(true);
+    });
+
+    // Handle logo selection
+    canvas.on('selection:created', (e) => {
+      const activeObject = e.selected?.[0];
+      if (activeObject === logoImageRef.current) {
+        updateLogoPosition(activeObject);
       }
     });
+
+    canvas.on('selection:updated', (e) => {
+      const activeObject = e.selected?.[0];
+      if (activeObject === logoImageRef.current) {
+        updateLogoPosition(activeObject);
+      }
+    });
+
+    canvas.on('object:moving', (e) => {
+      if (e.target === logoImageRef.current) {
+        updateLogoPosition(e.target);
+      }
+    });
+
+    return () => {
+      canvas.dispose();
+    };
+  }, [image.preview]);
+
+  const updateLogoPosition = (logoObject: any) => {
+    if (logoObject) {
+      setLogoPosition({
+        x: logoObject.left || 0,
+        y: logoObject.top || 0
+      });
+    }
   };
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!dragState.isDragging) return;
-    
-    const canvas = displayCanvasRef.current;
-    if (!canvas) return;
-    
-    const rect = canvas.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
-    
-    setLogoPosition({
-      x: Math.max(5, Math.min(95, x - dragState.dragOffset.x)),
-      y: Math.max(5, Math.min(95, y - dragState.dragOffset.y))
+  const addLogoToCanvas = () => {
+    if (!fabricCanvasRef.current || !logo.preview) return;
+
+    FabricImage.fromURL(logo.preview, {
+      crossOrigin: 'anonymous'
+    }).then((logoImg) => {
+      if (!fabricCanvasRef.current) return;
+
+      // Remove existing logo if any
+      if (logoImageRef.current) {
+        fabricCanvasRef.current.remove(logoImageRef.current);
+      }
+
+      // Calculate logo size
+      const canvasWidth = fabricCanvasRef.current.width || 800;
+      const canvasHeight = fabricCanvasRef.current.height || 600;
+      const logoWidth = (logoImg.width || 100) * logoScale;
+      
+      logoImg.scaleToWidth(logoWidth);
+      logoImg.set({
+        left: canvasWidth - logoWidth - 20,
+        top: canvasHeight - (logoImg.getScaledHeight() || 50) - 20,
+        opacity: logoOpacity,
+        selectable: true,
+        evented: true,
+        cornerColor: '#2563eb',
+        cornerSize: 12,
+        transparentCorners: false,
+        borderColor: '#2563eb',
+        borderScaleFactor: 2,
+        hasRotatingPoint: false
+      });
+
+      fabricCanvasRef.current.add(logoImg);
+      logoImageRef.current = logoImg;
+      setHasLogo(true);
+      
+      // Auto-select the logo
+      fabricCanvasRef.current.setActiveObject(logoImg);
+      fabricCanvasRef.current.renderAll();
+      
+      updateLogoPosition(logoImg);
     });
   };
 
-  const handleMouseUp = () => {
-    setDragState({ isDragging: false, dragOffset: { x: 0, y: 0 } });
+  // Update logo scale
+  useEffect(() => {
+    if (logoImageRef.current && fabricCanvasRef.current) {
+      const logoWidth = (logoImageRef.current.width || 100) * logoScale;
+      logoImageRef.current.scaleToWidth(logoWidth);
+      fabricCanvasRef.current.renderAll();
+    }
+  }, [logoScale]);
+
+  // Update logo opacity
+  useEffect(() => {
+    if (logoImageRef.current && fabricCanvasRef.current) {
+      logoImageRef.current.set({ opacity: logoOpacity });
+      fabricCanvasRef.current.renderAll();
+    }
+  }, [logoOpacity]);
+
+  const removeLogo = () => {
+    if (logoImageRef.current && fabricCanvasRef.current) {
+      fabricCanvasRef.current.remove(logoImageRef.current);
+      logoImageRef.current = null;
+      setHasLogo(false);
+      fabricCanvasRef.current.renderAll();
+    }
   };
 
   const resetSettings = () => {
-    setLogoPosition({ x: 80, y: 80 });
     setLogoScale(0.15);
     setLogoOpacity(0.9);
+    if (fabricCanvasRef.current) {
+      addLogoToCanvas();
+    }
   };
 
   const saveImage = () => {
-    if (!canvasRef.current) return;
+    if (!fabricCanvasRef.current) return;
+
+    // Create a new static canvas for export
+    const exportCanvas = new StaticCanvas(null, {
+      width: fabricCanvasRef.current.width,
+      height: fabricCanvasRef.current.height
+    });
+
+    // Clone all objects to export canvas
+    const objects = fabricCanvasRef.current.getObjects();
+    const clonedObjects: any[] = [];
     
-    const canvas = canvasRef.current;
-    canvas.toBlob((blob) => {
-      if (blob) {
-        const url = URL.createObjectURL(blob);
-        onSave(url);
-      }
-    }, 'image/png', 0.95);
+    Promise.all(objects.map(obj => 
+      new Promise((resolve) => {
+        obj.clone((cloned: any) => {
+          clonedObjects.push(cloned);
+          resolve(cloned);
+        });
+      })
+    )).then(() => {
+      clonedObjects.forEach(obj => exportCanvas.add(obj));
+      exportCanvas.renderAll();
+      
+      // Export as high quality image
+      const dataURL = exportCanvas.toDataURL({
+        format: 'png',
+        quality: 1,
+        multiplier: 1
+      });
+      
+      // Convert to blob and save
+      fetch(dataURL)
+        .then(res => res.blob())
+        .then(blob => {
+          const url = URL.createObjectURL(blob);
+          onSave(url);
+        });
+    });
   };
 
   return (
@@ -178,14 +240,20 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-bold text-foreground">Editor Visual</h2>
-              <p className="text-muted-foreground">Posicione e ajuste sua marca d'água</p>
+              <p className="text-muted-foreground">
+                Arraste a logo para posicioná-la na imagem
+              </p>
             </div>
             <div className="flex space-x-3">
               <Button variant="outline" onClick={resetSettings}>
                 <RotateCcw className="h-4 w-4 mr-2" />
                 Resetar
               </Button>
-              <Button onClick={saveImage}>
+              <Button variant="outline" onClick={removeLogo} disabled={!hasLogo}>
+                <Trash2 className="h-4 w-4 mr-2" />
+                Remover Logo
+              </Button>
+              <Button onClick={saveImage} disabled={!canvasReady}>
                 <Download className="h-4 w-4 mr-2" />
                 Salvar
               </Button>
@@ -198,38 +266,36 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
           <div className="lg:col-span-3">
             <div className="bg-card rounded-xl border shadow-sm overflow-hidden">
               <div className="p-4 border-b bg-muted/50">
-                <div className="flex items-center space-x-2">
-                  <Move className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">{image.file.name}</span>
-                  <span className="text-xs text-muted-foreground">
-                    • Arraste a logo para posicioná-la
-                  </span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Move className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">{image.file.name}</span>
+                  </div>
+                  {hasLogo && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={removeLogo}
+                      className="text-red-600 hover:text-red-700"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               </div>
               
-              <div ref={containerRef} className="p-6 bg-muted/30">
-                <div className="relative mx-auto w-fit">
+              <div className="p-6 bg-muted/30 flex justify-center">
+                <div className="relative">
                   <canvas
-                    ref={displayCanvasRef}
-                    onMouseDown={handleMouseDown}
-                    onMouseMove={handleMouseMove}
-                    onMouseUp={handleMouseUp}
-                    onMouseLeave={handleMouseUp}
-                    className={`rounded-lg shadow-lg border bg-white ${
-                      dragState.isDragging ? 'cursor-grabbing' : 'cursor-crosshair'
-                    }`}
-                    style={{ 
-                      display: 'block',
-                      maxWidth: '100%',
-                      height: 'auto'
-                    }}
+                    ref={canvasRef}
+                    className="border border-muted-foreground/20 rounded-lg shadow-lg bg-white max-w-full max-h-[600px] object-contain"
                   />
                   
-                  {/* Overlay instructions */}
-                  {!dragState.isDragging && (
-                    <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity bg-black/10 rounded-lg">
-                      <div className="bg-background/95 backdrop-blur-sm px-3 py-2 rounded-lg shadow-lg border">
-                        <p className="text-xs font-medium">Clique e arraste para mover a logo</p>
+                  {!canvasReady && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-muted/50 rounded-lg">
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
+                        <p className="text-sm text-muted-foreground">Carregando editor...</p>
                       </div>
                     </div>
                   )}
@@ -276,7 +342,7 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
                     value={[logoScale]}
                     onValueChange={(value) => setLogoScale(value[0])}
                     min={0.05}
-                    max={0.4}
+                    max={0.5}
                     step={0.01}
                     className="w-full"
                   />
@@ -305,19 +371,27 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">X:</span>
-                  <span className="font-mono">{Math.round(logoPosition.x)}%</span>
+                  <span className="font-mono">{Math.round(logoPosition.x)}px</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Y:</span>
-                  <span className="font-mono">{Math.round(logoPosition.y)}%</span>
+                  <span className="font-mono">{Math.round(logoPosition.y)}px</span>
                 </div>
               </div>
             </div>
+
+            {/* Instructions */}
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+              <h4 className="font-semibold text-blue-900 mb-2">Como usar</h4>
+              <ul className="text-sm text-blue-800 space-y-1">
+                <li>• Arraste a logo para posicioná-la</li>
+                <li>• Use os controles para ajustar tamanho</li>
+                <li>• Clique em "Remover Logo" para apagar</li>
+                <li>• Salve quando estiver satisfeito</li>
+              </ul>
+            </div>
           </div>
         </div>
-
-        {/* Hidden canvas for export */}
-        <canvas ref={canvasRef} style={{ display: 'none' }} />
       </div>
     </div>
   );
