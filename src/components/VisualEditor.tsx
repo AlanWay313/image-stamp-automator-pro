@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { UploadedImage, Logo } from '@/pages/Index';
 import { Slider } from '@/components/ui/slider';
@@ -50,49 +49,30 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Set canvas size based on container
-    const container = containerRef.current;
-    if (!container) return;
+    // Set canvas size to match original image dimensions
+    canvas.width = imageElement.naturalWidth;
+    canvas.height = imageElement.naturalHeight;
     
-    const containerRect = container.getBoundingClientRect();
-    const maxWidth = containerRect.width - 40;
-    const maxHeight = 500;
+    // Clear canvas with transparent background
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    const aspectRatio = imageElement.naturalWidth / imageElement.naturalHeight;
-    let canvasWidth = maxWidth;
-    let canvasHeight = maxWidth / aspectRatio;
+    // Draw background image at original size
+    ctx.drawImage(imageElement, 0, 0);
     
-    if (canvasHeight > maxHeight) {
-      canvasHeight = maxHeight;
-      canvasWidth = maxHeight * aspectRatio;
-    }
+    // Calculate logo dimensions proportionally
+    const logoWidth = logoElement.naturalWidth * logoScale;
+    const logoHeight = logoElement.naturalHeight * logoScale;
     
-    canvas.width = canvasWidth;
-    canvas.height = canvasHeight;
+    // Calculate logo position based on percentage
+    const logoX = (logoPosition.x / 100) * canvas.width - logoWidth / 2;
+    const logoY = (logoPosition.y / 100) * canvas.height - logoHeight / 2;
     
-    // Clear canvas
-    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-    
-    // Draw background image
-    ctx.save();
-    ctx.scale(imageScale, imageScale);
-    const scaledWidth = canvasWidth / imageScale;
-    const scaledHeight = canvasHeight / imageScale;
-    ctx.drawImage(imageElement, 0, 0, scaledWidth, scaledHeight);
-    ctx.restore();
-    
-    // Draw logo
-    const logoWidth = logoElement.naturalWidth * logoScale * (canvasWidth / imageElement.naturalWidth);
-    const logoHeight = logoElement.naturalHeight * logoScale * (canvasWidth / imageElement.naturalWidth);
-    
-    const logoX = (logoPosition.x / 100) * canvasWidth - logoWidth / 2;
-    const logoY = (logoPosition.y / 100) * canvasHeight - logoHeight / 2;
-    
+    // Draw logo with opacity
     ctx.save();
     ctx.globalAlpha = logoOpacity;
     ctx.drawImage(logoElement, logoX, logoY, logoWidth, logoHeight);
     ctx.restore();
-  }, [imageElement, logoElement, logoPosition, logoScale, logoOpacity, imageScale]);
+  }, [imageElement, logoElement, logoPosition, logoScale, logoOpacity]);
 
   useEffect(() => {
     drawCanvas();
@@ -103,8 +83,11 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
     if (!canvas) return;
     
     const rect = canvas.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / canvas.width) * 100;
-    const y = ((e.clientY - rect.top) / canvas.height) * 100;
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    
+    const x = ((e.clientX - rect.left) * scaleX / canvas.width) * 100;
+    const y = ((e.clientY - rect.top) * scaleY / canvas.height) * 100;
     
     setDragState({
       isDragging: true,
@@ -122,8 +105,11 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
     if (!canvas) return;
     
     const rect = canvas.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / canvas.width) * 100;
-    const y = ((e.clientY - rect.top) / canvas.height) * 100;
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    
+    const x = ((e.clientX - rect.left) * scaleX / canvas.width) * 100;
+    const y = ((e.clientY - rect.top) * scaleY / canvas.height) * 100;
     
     setLogoPosition({
       x: Math.max(5, Math.min(95, x - dragState.dragOffset.x)),
@@ -139,36 +125,13 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
     setLogoPosition({ x: 50, y: 50 });
     setLogoScale(0.1);
     setLogoOpacity(0.8);
-    setImageScale(1);
   };
 
-  const saveImage = async () => {
+  const saveImage = () => {
     if (!canvasRef.current) return;
     
-    // Create a high-resolution canvas for export
-    const exportCanvas = document.createElement('canvas');
-    const exportCtx = exportCanvas.getContext('2d');
-    if (!exportCtx || !imageElement || !logoElement) return;
-    
-    exportCanvas.width = imageElement.naturalWidth;
-    exportCanvas.height = imageElement.naturalHeight;
-    
-    // Draw the original image
-    exportCtx.drawImage(imageElement, 0, 0);
-    
-    // Draw logo at the correct position and scale
-    const logoWidth = logoElement.naturalWidth * logoScale;
-    const logoHeight = logoElement.naturalHeight * logoScale;
-    const logoX = (logoPosition.x / 100) * exportCanvas.width - logoWidth / 2;
-    const logoY = (logoPosition.y / 100) * exportCanvas.height - logoHeight / 2;
-    
-    exportCtx.save();
-    exportCtx.globalAlpha = logoOpacity;
-    exportCtx.drawImage(logoElement, logoX, logoY, logoWidth, logoHeight);
-    exportCtx.restore();
-    
-    // Convert to blob and save
-    exportCanvas.toBlob((blob) => {
+    const canvas = canvasRef.current;
+    canvas.toBlob((blob) => {
       if (blob) {
         const url = URL.createObjectURL(blob);
         onSave(url);
@@ -188,7 +151,6 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
       </div>
 
       <div className="grid lg:grid-cols-3 gap-6">
-        {/* Canvas Area */}
         <div className="lg:col-span-2">
           <div 
             ref={containerRef}
@@ -203,7 +165,13 @@ export const VisualEditor: React.FC<VisualEditorProps> = ({
               className={`max-w-full rounded shadow-md ${
                 dragState.isDragging ? 'cursor-grabbing' : 'cursor-grab'
               }`}
-              style={{ display: 'block', margin: '0 auto' }}
+              style={{ 
+                display: 'block', 
+                margin: '0 auto', 
+                maxWidth: '100%', 
+                maxHeight: '500px', 
+                objectFit: 'contain' 
+              }}
             />
           </div>
         </div>
