@@ -1,4 +1,4 @@
-
+import { Button } from "@/components/ui/button"
 import React, { useState } from 'react';
 import { Play, Download, Settings, Eye, AlertCircle, Edit3, Sparkles } from 'lucide-react';
 import { UploadedImage, Logo } from '@/pages/Index';
